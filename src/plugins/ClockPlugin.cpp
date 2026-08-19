@@ -18,7 +18,7 @@ void ClockPlugin::setup()
 
 void ClockPlugin::loop()
 {
-  if (getLocalTime(&timeinfo))
+  if (getLocalTime(&timeinfo, 5))
   {
     if (previousHour != timeinfo.tm_hour || previousMinutes != timeinfo.tm_min)
     {

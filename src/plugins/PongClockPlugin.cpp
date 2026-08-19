@@ -232,7 +232,7 @@ void PongClockPlugin::reset()
 void PongClockPlugin::setup()
 {
   Screen.clear();
-  if (getLocalTime(&timeinfo))
+  if (getLocalTime(&timeinfo, 5))
   {
     current_hour = timeinfo.tm_hour;
     current_minute = timeinfo.tm_min;
@@ -246,7 +246,7 @@ void PongClockPlugin::loop()
 {
   unsigned long currentMillis = millis();
 
-  if (getLocalTime(&timeinfo))
+  if (getLocalTime(&timeinfo, 5))
   {
     // clear screen and draw time
     if (previousHour != timeinfo.tm_hour || previousMinutes != timeinfo.tm_min)

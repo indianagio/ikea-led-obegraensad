@@ -94,6 +94,13 @@ bool holdPowerBeforeHint = true; // power state to restore if the hold is aborte
 unsigned long holdStartedAt = 0;
 } // namespace
 
+// SNTP keeps the pointer it is handed rather than copying the string
+// (sntp_servers[idx].name = server), so the server name has to outlive the
+// configTzTime() call. Passing a temporary String's c_str() leaves it pointing
+// at freed heap and the clock never syncs.
+String ntpServer;
+String tzInfo;
+
 unsigned long lastConnectionAttempt = 0;
 const unsigned long connectionInterval = 10000;
 unsigned long reconnectionBackoff = 5000;            // Start with 5 seconds
@@ -279,7 +286,9 @@ void baseSetup()
   connectToWiFi();
 
   // set time server using config values
-  configTzTime(config.getTzInfo().c_str(), config.getNtpServer().c_str());
+  tzInfo = config.getTzInfo();
+  ntpServer = config.getNtpServer();
+  configTzTime(tzInfo.c_str(), ntpServer.c_str());
 
   initOTA(server);
   initWebsocketServer(server);
