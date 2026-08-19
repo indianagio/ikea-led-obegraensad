@@ -4,6 +4,20 @@
 
 Turn your OBEGRÄNSAD LED Wall Lamp into a live drawing canvas
 
+**This is a fork.** Everything below is the upstream documentation and still
+applies. On top of it, this fork adds:
+
+- Plugin parameters: a plugin declares its knobs and the web UI builds the
+  sliders for it, with no frontend changes
+- Games playable from a phone at `/#/play`: Pong for two players, plus
+  Breakout, Snake, Flappy and Invaders
+- Three new visual plugins: Candle, Sand and Drop
+- Live preview of the panel in the web UI for every mode, not just Draw
+- Sub-pixel rendering, which uses the panel's grey levels to smooth motion
+- Panel on/off and a 10 second hold to reset WiFi, both on the side button
+
+Full details in [FORK.md](FORK.md).
+
 > **⚠ Disclaimer**: Use this code and instructions at your own risk! Improper use may damage the device.
 > **Contribute**: Have suggestions or improvements? Feel free to submit a PR or open an issue. 😊
 
