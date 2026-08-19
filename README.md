@@ -11,7 +11,8 @@ applies. On top of it, this fork adds:
   sliders for it, with no frontend changes
 - Games playable from a phone at `/#/play`: Pong for two players, plus
   Breakout, Snake, Flappy and Invaders
-- Three new visual plugins: Candle, Sand and Drop
+- Three new visual plugins: Candle, Sand and Drop, plus Clock XL, a clock
+  legible from across the room
 - Live preview of the panel in the web UI for every mode, not just Draw
 - Sub-pixel rendering, which uses the panel's grey levels to smooth motion
 - Panel on/off and a 10 second hold to reset WiFi, both on the side button

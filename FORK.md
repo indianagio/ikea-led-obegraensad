@@ -197,6 +197,18 @@ the paddle, and any empty side is played by the board.
 leaves the screen it is placed behind the furthest pipe rather than at a fixed
 offset, so spacing stays even however long the game runs.
 
+**Clock XL** is a clock meant to be read from across the room. Its 7x7 digits
+are drawn for disambiguation rather than for looks: 1 keeps a foot and a flag
+so it is not a bare stroke, 6 and 9 open their bowls on opposite sides, 0 stays
+hollow where 8 has its bar, 2 sits on a full base while 3 keeps both bowls to
+the right. Every stem is two pixels, because a single-pixel stroke disappears
+at a distance. Seven plus two plus seven fills the panel exactly in both
+directions, so the digits are as large as the panel allows. Hours are at full
+brightness and minutes dimmer, which is the one place the grey levels genuinely
+help at this size: the eye separates the two rows instantly, where
+anti-aliasing the glyphs themselves would only smear them. The two rows between
+the digits carry the current minute as a bar that creeps rather than steps.
+
 **Invaders** is a slide plus a fire button. One shot in flight at a time, as in
 the original. Only invaders with a clear column below them drop bombs, and the
 fleet speeds up as you thin it out and again on each wave.
@@ -260,6 +272,16 @@ definition defaults to 460800, which a CH340 adapter cannot sustain: esptool
 loads the stub, raises the baud rate and then loses the chip with "The chip
 stopped responding". If your adapter is better than mine, raising it back will
 flash about four times faster.
+
+The clock never used to work, and the reason is worth writing down.
+`configTzTime()` was handed `config.getNtpServer().c_str()`, but that getter
+returns a `String` by value, so the pointer aimed at a temporary destroyed at
+the end of the statement. lwip stores that pointer rather than copying the
+string, so SNTP was left reading freed heap, the hostname never resolved and
+the board's clock was never set. The timezone appeared to work because
+`setenv()` does copy. Every clock plugin draws nothing without a time, so what
+stayed on the panel was the plugin id that `renderPluginId()` shows for 800ms
+on each switch - which looks a lot like a clock stuck on one number.
 
 `getLocalTime()` is called with a 5ms timeout instead of the 5000ms default.
 While the clock is unsynced that call stalls for a full five seconds, and it
