@@ -1,7 +1,5 @@
 #include "plugins/ClockXLPlugin.h"
 
-#include "pixelfx.h"
-
 #include <sys/time.h>
 #include <time.h>
 
@@ -47,7 +45,7 @@ void ClockXLPlugin::drawDigit(int x, int y, uint8_t digit, uint8_t shade)
     for (int col = 0; col < CELL; col++)
     {
       if (bits & (1 << (CELL - 1 - col)))
-        Screen.setPixel(x + col, y + row, 1, shade);
+        this->frame[(y + row) * COLS + (x + col)] = shade;
     }
   }
 }
@@ -63,7 +61,7 @@ void ClockXLPlugin::drawWaiting()
   for (int yi = 0; yi < 2; yi++)
     for (int xi = 0; xi < 2; xi++)
       for (int col = 1; col < CELL - 1; col++)
-        Screen.setPixel(xs[xi] + col, ys[yi] + CELL / 2, 1, 35);
+        this->frame[(ys[yi] + CELL / 2) * COLS + xs[xi] + col] = 35;
 }
 
 void ClockXLPlugin::setup()
@@ -86,45 +84,59 @@ void ClockXLPlugin::loop()
   // stall everything else for five seconds per frame until the clock syncs.
   this->hasTime = getLocalTime(&timeinfo, 5);
 
-  Screen.clear();
+  memset(this->frame, 0, sizeof(this->frame));
 
-  if (!this->hasTime)
+  if (this->hasTime)
+  {
+    int hour = timeinfo.tm_hour;
+    if (this->paramValue("hour12"))
+    {
+      hour %= 12;
+      if (hour == 0)
+        hour = 12;
+    }
+
+    const uint8_t hourShade = MAX_BRIGHTNESS;
+    const uint8_t minuteShade = (uint8_t)(MAX_BRIGHTNESS * this->paramValue("minutes") / 100);
+
+    this->drawDigit(COL_LEFT, ROW_TOP, hour / 10, hourShade);
+    this->drawDigit(COL_RIGHT, ROW_TOP, hour % 10, hourShade);
+    this->drawDigit(COL_LEFT, ROW_BOTTOM, timeinfo.tm_min / 10, minuteShade);
+    this->drawDigit(COL_RIGHT, ROW_BOTTOM, timeinfo.tm_min % 10, minuteShade);
+
+    const int secondsPercent = this->paramValue("seconds");
+    if (secondsPercent > 0)
+    {
+      // The two free rows between the digits carry the minute. Sub-second
+      // precision and a partly-lit leading pixel turn what would be a step
+      // every four seconds into a steady creep.
+      struct timeval tv;
+      gettimeofday(&tv, nullptr);
+      const float filled =
+          ((float)timeinfo.tm_sec + (float)tv.tv_usec / 1000000.0f) / 60.0f * (float)COLS;
+      const uint8_t shade = (uint8_t)(MAX_BRIGHTNESS * secondsPercent / 100);
+
+      for (int x = 0; x < COLS; x++)
+      {
+        float coverage = filled - (float)x;
+        if (coverage <= 0.0f)
+          break;
+        if (coverage > 1.0f)
+          coverage = 1.0f;
+
+        const uint8_t value = (uint8_t)((float)shade * coverage);
+        this->frame[SECONDS_ROW * COLS + x] = value;
+        this->frame[(SECONDS_ROW + 1) * COLS + x] = value;
+      }
+    }
+  }
+  else
   {
     this->drawWaiting();
-    return;
   }
 
-  int hour = timeinfo.tm_hour;
-  if (this->paramValue("hour12"))
-  {
-    hour %= 12;
-    if (hour == 0)
-      hour = 12;
-  }
-
-  const uint8_t hourShade = MAX_BRIGHTNESS;
-  const uint8_t minuteShade = (uint8_t)(MAX_BRIGHTNESS * this->paramValue("minutes") / 100);
-
-  this->drawDigit(COL_LEFT, ROW_TOP, hour / 10, hourShade);
-  this->drawDigit(COL_RIGHT, ROW_TOP, hour % 10, hourShade);
-  this->drawDigit(COL_LEFT, ROW_BOTTOM, timeinfo.tm_min / 10, minuteShade);
-  this->drawDigit(COL_RIGHT, ROW_BOTTOM, timeinfo.tm_min % 10, minuteShade);
-
-  const int secondsShade = this->paramValue("seconds");
-  if (secondsShade > 0)
-  {
-    // The two free rows between the digits are given over to the minute, which
-    // runs across them. Sub-second precision plus sub-pixel drawing turns what
-    // would be a pixel jumping every four seconds into a steady creep.
-    struct timeval tv;
-    gettimeofday(&tv, nullptr);
-    const float fraction =
-        ((float)timeinfo.tm_sec + (float)tv.tv_usec / 1000000.0f) / 60.0f;
-
-    const uint8_t shade = (uint8_t)(MAX_BRIGHTNESS * secondsShade / 100);
-    pixelfx::barH(SECONDS_ROW, 0.0f, fraction * (float)COLS, shade);
-    pixelfx::barH(SECONDS_ROW + 1, 0.0f, fraction * (float)COLS, shade);
-  }
+  // One memcpy: the panel never sees a half-drawn frame, let alone a blank one.
+  Screen.setRenderBuffer(this->frame, true);
 }
 
 const char *ClockXLPlugin::getName() const

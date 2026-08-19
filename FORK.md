@@ -283,6 +283,17 @@ the board's clock was never set. The timezone appeared to work because
 stayed on the panel was the plugin id that `renderPluginId()` shows for 800ms
 on each switch - which looks a lot like a clock stuck on one number.
 
+If you write a plugin that draws something which stands still, do not clear the
+live buffer and redraw into it. The drawing task is preempted by WiFi and
+AsyncTCP, which run at higher priority, and being preempted between the clear
+and the redraw leaves the panel blank for as long as that takes. Measured on
+Clock XL, the blank window was usually 204us - one PWM sub-frame, invisible -
+but it reached 14.1ms often enough to be annoying, which is longer than the
+12.8ms it takes to paint a full brightness cycle. The whole clock flashed.
+Composing into a local buffer and publishing it with a single
+`Screen.setRenderBuffer(frame, true)` brought that window down to under 100us.
+Animated plugins hide the same effect, they do not avoid it.
+
 `getLocalTime()` is called with a 5ms timeout instead of the 5000ms default.
 While the clock is unsynced that call stalls for a full five seconds, and it
 runs from `loop()` once every four iterations, which pinned the main loop at

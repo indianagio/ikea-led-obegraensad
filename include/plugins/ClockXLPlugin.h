@@ -9,6 +9,10 @@ private:
   NonBlockingDelay timer;
   bool hasTime = false;
 
+  // Composed off-screen, then published in one go. Drawing straight into the
+  // live buffer means clearing it first, and the panel shows that gap.
+  uint8_t frame[TOTAL_PIXELS] = {0};
+
   void drawDigit(int x, int y, uint8_t digit, uint8_t shade);
   void drawWaiting();
 
