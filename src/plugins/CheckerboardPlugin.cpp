@@ -2,6 +2,7 @@
 
 void CheckerboardPlugin::setup()
 {
+  this->useSpeed();
   Screen.clear();
   offset = 0;
   inverted = false;
@@ -10,7 +11,7 @@ void CheckerboardPlugin::setup()
 
 void CheckerboardPlugin::loop()
 {
-  if (!timer.isReady(100))
+  if (!timer.isReady(this->scaled(100)))
     return;
 
   for (uint8_t y = 0; y < HEIGHT; y++)

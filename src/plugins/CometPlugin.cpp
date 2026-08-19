@@ -10,6 +10,7 @@ void CometPlugin::resetComet()
 
 void CometPlugin::setup()
 {
+  this->useSpeed();
   Screen.clear();
   memset(trail, 0, sizeof(trail));
   resetComet();
@@ -17,7 +18,7 @@ void CometPlugin::setup()
 
 void CometPlugin::loop()
 {
-  if (!timer.isReady(40))
+  if (!timer.isReady(this->scaled(40)))
   {
     return;
   }

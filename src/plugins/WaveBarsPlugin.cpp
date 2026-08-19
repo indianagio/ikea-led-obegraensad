@@ -3,13 +3,14 @@
 
 void WaveBarsPlugin::setup()
 {
+  this->useSpeed();
   Screen.clear();
   phase = 0.0f;
 }
 
 void WaveBarsPlugin::loop()
 {
-  if (!timer.isReady(60))
+  if (!timer.isReady(this->scaled(60)))
   {
     return;
   }

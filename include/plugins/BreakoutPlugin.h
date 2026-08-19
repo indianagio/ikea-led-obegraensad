@@ -1,56 +1,46 @@
 #pragma once
 
 #include "PluginManager.h"
+#include "timing.h"
 
 class BreakoutPlugin : public Plugin
 {
 private:
-  static constexpr uint8_t DEBOUNCE_TIME = 100;
-  static constexpr uint8_t X_MAX = 16;
-  static constexpr uint8_t Y_MAX = 16;
-  static constexpr uint8_t BRICK_AMOUNT = X_MAX * 4;
-  static constexpr uint8_t BALL_DELAY_MAX = 200;
-  static constexpr uint8_t BALL_DELAY_MIN = 100;
-  static constexpr uint8_t BALL_DELAY_STEP = 5;
-  static constexpr uint8_t PADDLE_WIDTH = 5;
-  static constexpr uint8_t DIRECTION_NONE = 0;
-  static constexpr uint8_t DIRECTION_LEFT = 1;
-  static constexpr uint8_t DIRECTION_RIGHT = 2;
-  static constexpr uint8_t LED_TYPE_OFF = 0;
-  static constexpr uint8_t LED_TYPE_ON = 1;
-  static constexpr uint8_t GAME_STATE_RUNNING = 1;
-  static constexpr uint8_t GAME_STATE_END = 2;
-  static constexpr uint8_t GAME_STATE_LEVEL = 3;
-  struct Coords
-  {
-    unsigned char x;
-    unsigned char y;
-  };
+  static constexpr uint8_t BRICK_ROWS = 4;
+  static constexpr uint8_t PADDLE_ROW = ROWS - 1;
 
-  unsigned char gameState;
-  unsigned char level;
-  unsigned char destroyedBricks;
-  Coords paddle[BreakoutPlugin::PADDLE_WIDTH];
-  Coords bricks[BreakoutPlugin::BRICK_AMOUNT];
-  Coords ball;
+  NonBlockingDelay timer;
+  unsigned long lastStepAt = 0; // for delta-time integration
 
-  int ballMovement[2];
-  uint8_t ballDelay;
-  uint8_t score;
-  unsigned long lastBallUpdate = 0;
+  bool bricks[BRICK_ROWS * COLS] = {false};
+  uint8_t remaining = 0;
 
-  void resetLEDs();
-  void initGame();
-  void initBricks();
-  void newLevel();
-  void updateBall();
-  void hitBrick(unsigned char i);
-  void checkPaddleCollision();
-  void updatePaddle();
-  void end();
+  float paddleX = 8.0f;       // paddle centre
+  float paddleTarget = 8.0f;
+  int8_t aiDirection = 1;     // used when nobody is playing
+
+  float ballX = 8.0f, ballY = 13.0f;
+  float ballVX = 0.0f, ballVY = 0.0f;
+
+  uint8_t lives = 3;
+  uint8_t level = 1;
+  uint16_t score = 0;
+
+  unsigned long holdUntil = 0; // score/gameover screen
+  bool gameOver = false;
+
+  float ballSpeed() const;
+  void buildLevel(bool firstLevel);
+  void launchBall();
+  void loseLife();
+  void updatePaddle(float dt);
+  void updateBall(float dt);
+  void render();
 
 public:
   void setup() override;
   void loop() override;
   const char *getName() const override;
+  String getStatus() const override;
+  char getAxis() const override;
 };

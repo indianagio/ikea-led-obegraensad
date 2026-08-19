@@ -6,6 +6,7 @@ void SnakePlugin::initGame()
   Screen.clear();
 
   this->position = {TOTAL_PIXELS - COLS, TOTAL_PIXELS - COLS + 1, TOTAL_PIXELS - COLS + 2};
+  this->lastDirection = 2; // heading right
   for (const int &n : this->position)
   {
     Screen.setPixelAtIndex(n, SnakePlugin::LED_TYPE_ON);
@@ -248,6 +249,72 @@ void SnakePlugin::findDirection()
   }
 }
 
+// Player-driven step. The snake keeps its heading until told otherwise, cannot
+// double back on itself, and dies against a wall or its own body.
+void SnakePlugin::playerStep()
+{
+  const uint8_t requested = this->seatDirection(0);
+  const uint8_t opposite[5] = {0, 3, 4, 1, 2};
+
+  if (requested && requested != opposite[this->lastDirection])
+    this->lastDirection = requested;
+  if (!this->lastDirection)
+    this->lastDirection = 2; // start heading right
+
+  const uint head = this->position[this->position.size() - 1];
+  uint newpos = head;
+
+  switch (this->lastDirection)
+  {
+  case 1:
+    if (head < COLS)
+    {
+      this->end();
+      return;
+    }
+    newpos = head - COLS;
+    break;
+  case 2:
+    if (head % COLS == COLS - 1)
+    {
+      this->end();
+      return;
+    }
+    newpos = head + 1;
+    break;
+  case 3:
+    if (head >= TOTAL_PIXELS - COLS)
+    {
+      this->end();
+      return;
+    }
+    newpos = head + COLS;
+    break;
+  default:
+    if (head % COLS == 0)
+    {
+      this->end();
+      return;
+    }
+    newpos = head - 1;
+    break;
+  }
+
+  // The tail cell is about to be vacated, so entering it is legal unless this
+  // step also eats and the body grows.
+  const bool grows = (newpos == this->dot);
+  for (size_t i = grows ? 0 : 1; i < this->position.size(); i++)
+  {
+    if (this->position[i] == newpos)
+    {
+      this->end();
+      return;
+    }
+  }
+
+  this->moveSnake(newpos);
+}
+
 void SnakePlugin::moveSnake(uint newpos)
 {
   if (newpos == this->dot)
@@ -357,17 +424,25 @@ void SnakePlugin::updateDeathAnimation()
 
 void SnakePlugin::setup()
 {
+  this->useSpeed();
+  this->useSeats(1);
+
   this->gameState = SnakePlugin::GAME_STATE_END;
 }
 
 void SnakePlugin::loop()
 {
+  this->updateSeats();
+
   switch (this->gameState)
   {
   case SnakePlugin::GAME_STATE_RUNNING:
-    if (moveTimer.isReady(SnakePlugin::SNAKE_DELAY_MS))
+    if (moveTimer.isReady(this->scaled(SnakePlugin::SNAKE_DELAY_MS)))
     {
-      this->findDirection();
+      if (this->isSeatHeld(0))
+        this->playerStep();
+      else
+        this->findDirection();
     }
     break;
   case SnakePlugin::GAME_STATE_DEATH_ANIMATION:
@@ -377,6 +452,18 @@ void SnakePlugin::loop()
     this->initGame();
     break;
   }
+}
+
+String SnakePlugin::getStatus() const
+{
+  String status = "Score ";
+  status += (int)this->position.size() - 3; // the starting body is three long
+  return status;
+}
+
+char SnakePlugin::getAxis() const
+{
+  return 'd';
 }
 
 const char *SnakePlugin::getName() const

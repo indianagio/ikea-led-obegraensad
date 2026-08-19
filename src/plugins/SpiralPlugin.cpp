@@ -3,6 +3,7 @@
 
 void SpiralPlugin::setup()
 {
+  this->useSpeed();
   Screen.clear();
   angle = 0;
   radius = 0;
@@ -11,7 +12,7 @@ void SpiralPlugin::setup()
 
 void SpiralPlugin::loop()
 {
-  if (!timer.isReady(30))
+  if (!timer.isReady(this->scaled(30)))
     return;
 
   // Fade previous frame

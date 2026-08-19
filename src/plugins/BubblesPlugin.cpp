@@ -12,6 +12,7 @@ void BubblesPlugin::resetBubble(Bubble &bubble)
 
 void BubblesPlugin::setup()
 {
+  this->useSpeed();
   Screen.clear();
   for (uint8_t i = 0; i < kBubbleCount; i++)
   {
@@ -21,7 +22,7 @@ void BubblesPlugin::setup()
 
 void BubblesPlugin::loop()
 {
-  if (!timer.isReady(80))
+  if (!timer.isReady(this->scaled(80)))
   {
     return;
   }

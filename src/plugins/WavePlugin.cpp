@@ -3,6 +3,7 @@
 
 void WavePlugin::setup()
 {
+  this->useSpeed();
   Screen.clear();
   phase = 0;
   waveSpeed = 0.2;
@@ -10,7 +11,7 @@ void WavePlugin::setup()
 
 void WavePlugin::loop()
 {
-  if (!timer.isReady(50))
+  if (!timer.isReady(this->scaled(50)))
     return;
 
   // Generate wave pattern

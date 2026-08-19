@@ -24,21 +24,27 @@
 #include "plugins/Blob.h"
 #include "plugins/BreakoutPlugin.h"
 #include "plugins/BubblesPlugin.h"
+#include "plugins/CandlePlugin.h"
 #include "plugins/CheckerboardPlugin.h"
 #include "plugins/CirclePlugin.h"
 #include "plugins/CometPlugin.h"
 #include "plugins/DDPPlugin.h"
 #include "plugins/DrawPlugin.h"
+#include "plugins/DropPlugin.h"
 #include "plugins/FirefliesPlugin.h"
 #include "plugins/FireworkPlugin.h"
+#include "plugins/FlappyPlugin.h"
 #include "plugins/GameOfLifePlugin.h"
+#include "plugins/InvadersPlugin.h"
 #include "plugins/LinesPlugin.h"
 #include "plugins/MatrixRainPlugin.h"
 #include "plugins/MeteorShowerPlugin.h"
 #include "plugins/PongClockPlugin.h"
+#include "plugins/PongPlugin.h"
 #include "plugins/RadarPlugin.h"
 #include "plugins/RainPlugin.h"
 #include "plugins/ScanlinesPlugin.h"
+#include "plugins/SandPlugin.h"
 #include "plugins/SnakePlugin.h"
 #include "plugins/SparkleFieldPlugin.h"
 #include "plugins/SpiralPlugin.h"
@@ -73,6 +79,20 @@ DRAM_ATTR volatile SYSTEM_STATUS currentStatus = NONE;
 volatile SYSTEM_STATUS currentStatus = NONE;
 #endif
 WiFiManager wifiManager;
+
+// Long-hold handling lives here rather than in ButtonFever: that library takes
+// a single press-for threshold, and it is already spent on the 1s power toggle.
+namespace
+{
+constexpr unsigned long HOLD_POWER_MS = 1000;  // ButtonFever's threshold
+constexpr unsigned long HOLD_HINT_MS = 3000;   // countdown becomes visible
+constexpr unsigned long HOLD_WIFI_MS = 10000;  // credentials wiped
+
+bool holdPending = false;        // a long press started and has not been released
+bool holdShowingHint = false;    // the panel is taken over by the countdown
+bool holdPowerBeforeHint = true; // power state to restore if the hold is aborted
+unsigned long holdStartedAt = 0;
+} // namespace
 
 unsigned long lastConnectionAttempt = 0;
 const unsigned long connectionInterval = 10000;
@@ -144,12 +164,97 @@ void pressHandler(BfButton *btn, BfButton::press_pattern_t pattern)
     }
     break;
 
-  case BfButton::LONG_PRESS:
+  case BfButton::DOUBLE_PRESS:
+    // Back to the mode you marked as default.
     if (currentStatus != LOADING)
     {
+      Scheduler.clearSchedule();
       pluginManager.activatePersistedPlugin();
     }
     break;
+
+  case BfButton::LONG_PRESS:
+    // Don't act yet: the user may be on their way to the 10s WiFi reset. The
+    // power toggle happens on release, which also lets the panel stay lit to
+    // show the countdown.
+    if (currentStatus != LOADING)
+    {
+      holdPending = true;
+      holdShowingHint = false;
+      holdStartedAt = millis() - HOLD_POWER_MS;
+    }
+    break;
+  }
+}
+
+// Draws the "keep holding to forget WiFi" countdown and fires the reset.
+void updateLongHold()
+{
+  if (!holdPending)
+    return;
+
+  const bool stillDown = digitalRead(PIN_BUTTON) == LOW;
+  const unsigned long held = millis() - holdStartedAt;
+
+  if (!stillDown)
+  {
+    holdPending = false;
+
+    if (holdShowingHint)
+    {
+      // Released mid-countdown: treat it as an abort, not as a power toggle.
+      holdShowingHint = false;
+      currentStatus = NONE;
+      Screen.setPower(holdPowerBeforeHint);
+      Screen.clear();
+    }
+    else
+    {
+      Screen.setPower(!Screen.isPoweredOn(), true);
+#ifdef ENABLE_SERVER
+      sendInfo();
+#endif
+    }
+    return;
+  }
+
+  if (held >= HOLD_WIFI_MS)
+  {
+    holdPending = false;
+    holdShowingHint = false;
+
+    Screen.clear();
+    Screen.drawRectangle(0, 0, COLS, ROWS, true, 1, MAX_BRIGHTNESS);
+
+    Serial.println("Button held: clearing WiFi credentials and restarting");
+    wifiManager.resetSettings();
+    delay(400); // let the flash write settle and the flash of light be seen
+    ESP.restart();
+    return;
+  }
+
+  if (held < HOLD_HINT_MS)
+    return;
+
+  if (!holdShowingHint)
+  {
+    holdShowingHint = true;
+    holdPowerBeforeHint = Screen.isPoweredOn();
+    // Take the panel off the plugin and make sure it is lit, or a countdown on
+    // a switched-off display would be invisible.
+    currentStatus = LOADING;
+    Screen.setPower(true);
+  }
+
+  const float progress = (float)(held - HOLD_HINT_MS) / (float)(HOLD_WIFI_MS - HOLD_HINT_MS);
+  const int filled = (int)(progress * (float)COLS + 0.5f);
+
+  Screen.clear();
+  for (int x = 0; x < COLS; x++)
+  {
+    const uint8_t shade = x < filled ? MAX_BRIGHTNESS : 25;
+    Screen.setPixel(x, 7, 1, shade);
+    Screen.setPixel(x, 8, 1, shade);
   }
 }
 
@@ -215,6 +320,13 @@ void baseSetup()
   pluginManager.addPlugin(new ArtNetPlugin());
 #endif
 
+  pluginManager.addPlugin(new CandlePlugin());
+  pluginManager.addPlugin(new SandPlugin());
+  pluginManager.addPlugin(new DropPlugin());
+  pluginManager.addPlugin(new PongPlugin());
+  pluginManager.addPlugin(new FlappyPlugin());
+  pluginManager.addPlugin(new InvadersPlugin());
+
   Screen.clear();
   pluginManager.init();
   Scheduler.init();
@@ -230,7 +342,15 @@ void screenDrawingTask(void *parameter)
   Screen.setup();
   for (;;)
   {
-    pluginManager.runActivePlugin();
+    // A blank panel has nothing to animate, so let the plugin idle.
+    if (Screen.isPoweredOn())
+      pluginManager.runActivePlugin();
+
+    // The live preview is driven from here rather than from loop(), which can
+    // be held up by other work. It rate-limits itself.
+#ifdef ENABLE_SERVER
+    sendPreviewFrame();
+#endif
     vTaskDelay(1);
   }
 }
@@ -267,6 +387,7 @@ void loop()
   static uint8_t taskCounter = 0;
 
   btn.read();
+  updateLongHold();
 
 #ifdef ENABLE_SERVER
   ElegantOTA.loop();

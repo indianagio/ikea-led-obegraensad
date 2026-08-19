@@ -1,224 +1,260 @@
-// copyright https://elektro.turanis.de/html/prj104/index.html
+// Rewritten from the original demo (https://elektro.turanis.de/html/prj104/)
+// into a playable game: the paddle follows a seated player, the frame no longer
+// blocks the drawing task, and bricks/lives/levels are tracked properly.
 #include "plugins/BreakoutPlugin.h"
 
-void BreakoutPlugin::initGame()
-{
-  Screen.clear();
+#include "pixelfx.h"
 
-  this->ballDelay = this->BALL_DELAY_MAX;
-  this->score = 0;
-  this->level = 0;
-  newLevel();
+#include <math.h>
+
+namespace
+{
+constexpr unsigned long STEP_MS = 33;
+constexpr unsigned long HOLD_MS = 1600;
+constexpr float PADDLE_EASE = 0.4f;
+constexpr uint8_t BRICK_SHADE[4] = {200, 150, 110, 75}; // top row is the brightest
+
+float clampf(float v, float lo, float hi)
+{
+  return v < lo ? lo : (v > hi ? hi : v);
+}
+} // namespace
+
+float BreakoutPlugin::ballSpeed() const
+{
+  // Each cleared level makes it a little quicker.
+  const float base = 0.22f * ((float)this->paramValue("ballspeed") / 100.0f);
+  return base * (1.0f + 0.12f * (float)(this->level - 1));
 }
 
-void BreakoutPlugin::initBricks()
+void BreakoutPlugin::buildLevel(bool firstLevel)
 {
-  this->destroyedBricks = 0;
-  for (byte i = 0; i < this->BRICK_AMOUNT; i++)
-  {
-    this->bricks[i].x = i % this->X_MAX;
-    this->bricks[i].y = i / this->X_MAX;
-    Screen.setPixelAtIndex(this->bricks[i].y * this->X_MAX + this->bricks[i].x,
-                           this->LED_TYPE_ON,
-                           50);
+  for (int i = 0; i < BRICK_ROWS * COLS; i++)
+    this->bricks[i] = true;
+  this->remaining = BRICK_ROWS * COLS;
 
-#ifdef ESP32
-    vTaskDelay(pdMS_TO_TICKS(25));
-#else
-    delay(25);
-#endif
+  if (firstLevel)
+  {
+    this->level = 1;
+    this->lives = 3;
+    this->score = 0;
   }
+
+  this->launchBall();
 }
 
-void BreakoutPlugin::newLevel()
+void BreakoutPlugin::launchBall()
 {
-  this->initBricks();
-  for (byte i = 0; i < this->PADDLE_WIDTH; i++)
-  {
-    this->paddle[i].x = (this->X_MAX / 2) - (this->PADDLE_WIDTH / 2) + i;
-    this->paddle[i].y = this->Y_MAX - 1;
-    Screen.setPixelAtIndex(this->paddle[i].y * this->X_MAX + this->paddle[i].x,
-                           this->LED_TYPE_ON,
-                           50);
-  }
-  this->ball.x = this->paddle[1].x;
-  this->ball.y = this->paddle[1].y - 1;
+  this->ballX = this->paddleX;
+  this->ballY = (float)PADDLE_ROW - 1.0f;
 
-  Screen.setPixelAtIndex(ball.y * this->X_MAX + ball.x, this->LED_TYPE_ON, 128);
-  this->ballMovement[0] = 1;
-  this->ballMovement[1] = -1;
-  this->lastBallUpdate = 0;
-
-  this->level++;
-  this->gameState = this->GAME_STATE_RUNNING;
+  const float speed = this->ballSpeed();
+  this->ballVY = -speed;
+  this->ballVX = speed * (random(2) ? 0.75f : -0.75f);
 }
 
-void BreakoutPlugin::updateBall()
+void BreakoutPlugin::loseLife()
 {
-  if ((millis() - this->lastBallUpdate) < this->ballDelay)
-  {
-    return;
-  }
-  this->lastBallUpdate = millis();
-  Screen.setPixelAtIndex(this->ball.y * this->X_MAX + this->ball.x, this->LED_TYPE_OFF, 100);
+  this->holdUntil = millis() + HOLD_MS;
 
-  if (this->ballMovement[1] == 1)
-  {
-    // collision with bottom
-    if (this->ball.y == (this->Y_MAX - 1))
-    {
-      this->end();
-      return;
-    }
-    this->checkPaddleCollision();
-  }
+  if (this->lives > 0)
+    this->lives--;
 
-  // collision detection with bricks
-  for (byte i = 0; i < this->BRICK_AMOUNT; i++)
+  if (this->lives == 0)
   {
-    if (this->bricks[i].x == this->ball.x && this->bricks[i].y == this->ball.y)
-    {
-      this->hitBrick(i);
-      break;
-    }
-  }
-  if (this->destroyedBricks >= this->BRICK_AMOUNT)
-  {
-    this->gameState = this->GAME_STATE_LEVEL;
+    this->gameOver = true;
     return;
   }
 
-  // collision detection with wall
-  if (this->ball.x <= 0 || this->ball.x >= (this->X_MAX - 1))
-  {
-    this->ballMovement[0] *= -1;
-  }
-  if (this->ball.y <= 0)
-  {
-    this->ballMovement[1] *= -1;
-  }
-
-  this->ball.x += this->ballMovement[0];
-  this->ball.y += this->ballMovement[1];
-
-  Screen.setPixelAtIndex(this->ball.y * this->X_MAX + this->ball.x, this->LED_TYPE_ON, 100);
+  this->launchBall();
 }
 
-void BreakoutPlugin::hitBrick(byte i)
+void BreakoutPlugin::updatePaddle(float dt)
 {
-  this->bricks[i].x = -1;
-  this->bricks[i].y = -1;
-  // ballMovement[1] *= -1;
-  this->score++;
-  this->destroyedBricks++;
-  if (this->ballDelay > this->BALL_DELAY_MIN)
+  const float half = (float)this->paramValue("paddle") / 2.0f;
+
+  if (this->isSeatHeld(0))
   {
-    this->ballDelay -= this->BALL_DELAY_STEP;
-  }
-  Screen.setPixelAtIndex(this->bricks[i].y * this->X_MAX + this->bricks[i].x, this->LED_TYPE_OFF);
-}
-
-void BreakoutPlugin::checkPaddleCollision()
-{
-  if ((this->paddle[0].y - 1) != this->ball.y)
-  {
-    return;
-  }
-
-  // reverse movement direction on the edges
-  if (this->ballMovement[0] == 1 && (this->paddle[0].x - 1) == this->ball.x ||
-      this->ballMovement[0] == -1 && (this->paddle[this->PADDLE_WIDTH - 1].x + 1) == this->ball.x)
-  {
-    this->ballMovement[0] *= -1;
-    this->ballMovement[1] *= -1;
-
-    return;
-  }
-  if (paddle[this->PADDLE_WIDTH / 2].x == this->ball.x)
-  {
-    this->ballMovement[0] = 0;
-    this->ballMovement[1] *= -1;
-
-    return;
-  }
-
-  for (byte i = 0; i < this->PADDLE_WIDTH; i++)
-  {
-    if (this->paddle[i].x == this->ball.x)
-    {
-      this->ballMovement[1] *= -1;
-      if (random(2) == 0)
-      {
-        this->ballMovement[0] = 1;
-      }
-      else
-      {
-        this->ballMovement[0] = -1;
-      }
-
-      break;
-    }
-  }
-}
-
-void BreakoutPlugin::updatePaddle()
-{
-  static int moveDirection = 1;
-
-  int newPaddlePosition = this->paddle[0].x + moveDirection;
-
-  if (newPaddlePosition >= 0 && newPaddlePosition + this->PADDLE_WIDTH <= this->X_MAX)
-  {
-    for (byte i = 0; i < this->PADDLE_WIDTH; i++)
-    {
-      Screen.setPixelAtIndex(this->paddle[i].y * this->X_MAX + this->paddle[i].x, this->LED_TYPE_OFF);
-    }
-    for (byte i = 0; i < this->PADDLE_WIDTH; i++)
-    {
-      this->paddle[i].x += moveDirection;
-    }
-    for (byte i = 0; i < this->PADDLE_WIDTH; i++)
-    {
-      Screen.setPixelAtIndex(this->paddle[i].y * this->X_MAX + this->paddle[i].x, this->LED_TYPE_ON);
-    }
+    this->paddleTarget = this->seatPosition(0) * (float)(COLS - 1);
   }
   else
   {
-    moveDirection *= -1;
+    // Nobody seated: the board plays it, tracking the ball loosely.
+    if (this->ballVY > 0.0f)
+      this->paddleTarget = this->ballX;
+    else
+      this->paddleTarget += (float)this->aiDirection * 0.35f * dt;
+
+    if (this->paddleTarget <= half || this->paddleTarget >= (float)(COLS - 1) - half)
+      this->aiDirection = -this->aiDirection;
+  }
+
+  this->paddleTarget = clampf(this->paddleTarget, half - 0.5f, (float)(COLS - 1) - half + 0.5f);
+  // Framerate-independent smoothing.
+  const float k = 1.0f - powf(1.0f - PADDLE_EASE, dt);
+  this->paddleX += (this->paddleTarget - this->paddleX) * k;
+}
+
+void BreakoutPlugin::updateBall(float dt)
+{
+  if (millis() < this->holdUntil)
+    return;
+
+  if (this->gameOver)
+  {
+    this->gameOver = false;
+    this->buildLevel(true);
+    return;
+  }
+
+  this->ballX += this->ballVX * dt;
+  this->ballY += this->ballVY * dt;
+
+  // Side walls and ceiling.
+  if (this->ballX < 0.0f)
+  {
+    this->ballX = -this->ballX;
+    this->ballVX = -this->ballVX;
+  }
+  else if (this->ballX > (float)(COLS - 1))
+  {
+    this->ballX = 2.0f * (float)(COLS - 1) - this->ballX;
+    this->ballVX = -this->ballVX;
+  }
+  if (this->ballY < 0.0f)
+  {
+    this->ballY = -this->ballY;
+    this->ballVY = -this->ballVY;
+  }
+
+  // Bricks.
+  const int bx = (int)roundf(this->ballX);
+  const int by = (int)roundf(this->ballY);
+  if (by >= 0 && by < BRICK_ROWS && bx >= 0 && bx < COLS)
+  {
+    const int index = by * COLS + bx;
+    if (this->bricks[index])
+    {
+      this->bricks[index] = false;
+      this->remaining--;
+      this->score++;
+      this->ballVY = -this->ballVY;
+      this->ballY += this->ballVY;
+
+      if (this->remaining == 0)
+      {
+        this->level++;
+        this->holdUntil = millis() + HOLD_MS;
+        this->buildLevel(false);
+        return;
+      }
+    }
+  }
+
+  // Paddle.
+  const float half = (float)this->paramValue("paddle") / 2.0f;
+  if (this->ballVY > 0.0f && this->ballY >= (float)PADDLE_ROW - 1.0f)
+  {
+    if (fabsf(this->ballX - this->paddleX) <= half + 0.5f)
+    {
+      this->ballY = (float)PADDLE_ROW - 1.0f;
+      this->ballVY = -this->ballVY;
+      // Where it lands on the paddle sets the outgoing angle.
+      this->ballVX += (this->ballX - this->paddleX) / half * 0.14f;
+      this->ballVX = clampf(this->ballVX, -0.42f, 0.42f);
+    }
+    else if (this->ballY > (float)PADDLE_ROW)
+    {
+      this->loseLife();
+    }
   }
 }
 
-void BreakoutPlugin::end()
+void BreakoutPlugin::render()
 {
-  this->gameState = this->GAME_STATE_END;
-  Screen.setPixelAtIndex(this->ball.y * this->X_MAX + this->ball.x, this->LED_TYPE_ON);
+  Screen.clear();
+
+  for (int y = 0; y < BRICK_ROWS; y++)
+    for (int x = 0; x < COLS; x++)
+      if (this->bricks[y * COLS + x])
+        Screen.setPixel(x, y, 1, BRICK_SHADE[y]);
+
+  const int size = this->paramValue("paddle");
+  const uint8_t shade = this->isSeatHeld(0) ? 255 : 140;
+  const float left = this->paddleX - (float)size / 2.0f + 0.5f;
+  pixelfx::barH(PADDLE_ROW, left, left + (float)size, shade);
+
+  if (millis() < this->holdUntil)
+  {
+    // The pause after a lost life is the moment the count matters, so the score
+    // goes up top and the lives left sit under it as dots. Keeping them on
+    // screen during play only put dim pixels in the ball's path.
+    std::vector<int> digits;
+    if (this->score >= 10)
+      digits.push_back((this->score / 10) % 10);
+    digits.push_back(this->score % 10);
+    Screen.drawNumbers(digits.size() > 1 ? 3 : 6, 4, digits, MAX_BRIGHTNESS);
+
+    const int shown = this->lives > 3 ? 3 : this->lives;
+    const int startX = 8 - (shown * 2 - 1) / 2 - 1;
+    for (int i = 0; i < shown; i++)
+      Screen.setPixel(startX + i * 2, 12, 1, 160);
+
+    return;
+  }
+
+  pixelfx::dot(this->ballX, this->ballY, MAX_BRIGHTNESS);
 }
 
 void BreakoutPlugin::setup()
 {
-  this->gameState = this->GAME_STATE_END;
+  this->useSpeed();
+  this->useSeats(1);
+  this->addParam("paddle", "Paddle size", 3, 7, 5);
+  this->addParam("ballspeed", "Ball speed", 40, 220, 100);
+
+  this->paddleX = 8.0f;
+  this->paddleTarget = 8.0f;
+  this->gameOver = false;
+  this->holdUntil = 0;
+  this->lastStepAt = 0;
+  this->buildLevel(true);
+
+  Screen.clear();
 }
 
 void BreakoutPlugin::loop()
 {
-  switch (this->gameState)
-  {
-  case this->GAME_STATE_LEVEL:
-    this->newLevel();
-    break;
-  case this->GAME_STATE_RUNNING:
-    this->updateBall();
-    this->updatePaddle();
-#ifdef ESP32
-    vTaskDelay(pdMS_TO_TICKS(random(100, 200)));
-#else
-    delay(random(100, 200));
-#endif
-    break;
-  case this->GAME_STATE_END:
-    this->initGame();
-    break;
-  }
+  if (!timer.isReady(this->scaled(STEP_MS)))
+    return;
+
+  const unsigned long now = millis();
+  float dt = this->lastStepAt ? (float)(now - this->lastStepAt) / (float)STEP_MS : 1.0f;
+  this->lastStepAt = now;
+  if (dt > 3.0f)
+    dt = 3.0f;
+
+  this->updateSeats();
+  this->updatePaddle(dt);
+  this->updateBall(dt);
+  this->render();
+}
+
+String BreakoutPlugin::getStatus() const
+{
+  String status = "Score ";
+  status += this->score;
+  status += "  Lv ";
+  status += this->level;
+  status += "  ";
+  status += this->lives;
+  status += this->lives == 1 ? " life" : " lives";
+  return status;
+}
+
+char BreakoutPlugin::getAxis() const
+{
+  return 'x';
 }
 
 const char *BreakoutPlugin::getName() const

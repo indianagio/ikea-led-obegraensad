@@ -3,6 +3,7 @@
 
 void RadarPlugin::setup()
 {
+  this->useSpeed();
   Screen.clear();
   sweepAngle = 0;
   sweepSpeed = 0.1;
@@ -18,7 +19,7 @@ void RadarPlugin::setup()
 
 void RadarPlugin::loop()
 {
-  if (!timer.isReady(50))
+  if (!timer.isReady(this->scaled(50)))
     return;
 
   // Fade all pixels

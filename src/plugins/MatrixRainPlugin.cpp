@@ -2,6 +2,7 @@
 
 void MatrixRainPlugin::setup()
 {
+  this->useSpeed();
   Screen.clear();
   
   for (uint8_t i = 0; i < NUM_COLUMNS; i++)
@@ -15,7 +16,7 @@ void MatrixRainPlugin::setup()
 
 void MatrixRainPlugin::loop()
 {
-  if (!timer.isReady(50))
+  if (!timer.isReady(this->scaled(50)))
     return;
 
   // Fade all pixels

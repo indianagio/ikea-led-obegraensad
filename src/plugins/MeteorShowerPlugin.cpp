@@ -10,6 +10,7 @@ void MeteorShowerPlugin::resetMeteor(Meteor &meteor)
 
 void MeteorShowerPlugin::setup()
 {
+  this->useSpeed();
   Screen.clear();
   for (uint8_t i = 0; i < kMeteorCount; i++)
   {
@@ -19,7 +20,7 @@ void MeteorShowerPlugin::setup()
 
 void MeteorShowerPlugin::loop()
 {
-  if (!timer.isReady(50))
+  if (!timer.isReady(this->scaled(50)))
   {
     return;
   }

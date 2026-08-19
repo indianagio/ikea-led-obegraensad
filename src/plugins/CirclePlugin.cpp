@@ -2,12 +2,13 @@
 
 void CirclePlugin::setup()
 {
+  this->useSpeed();
   this->circleStep = 0;
 }
 
 void CirclePlugin::loop()
 {
-  if (!timer.isReady(200))
+  if (!timer.isReady(this->scaled(200)))
     return;
 
   std::vector<int> bits = Screen.readBytes(this->frames[this->circleStep]);

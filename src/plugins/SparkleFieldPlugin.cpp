@@ -2,13 +2,14 @@
 
 void SparkleFieldPlugin::setup()
 {
+  this->useSpeed();
   Screen.clear();
   memset(sparkles, 0, sizeof(sparkles));
 }
 
 void SparkleFieldPlugin::loop()
 {
-  if (!timer.isReady(70))
+  if (!timer.isReady(this->scaled(70)))
   {
     return;
   }

@@ -2,6 +2,7 @@
 
 void ScanlinesPlugin::setup()
 {
+  this->useSpeed();
   Screen.clear();
   position = 0.0f;
   speed = 0.4f;
@@ -9,7 +10,7 @@ void ScanlinesPlugin::setup()
 
 void ScanlinesPlugin::loop()
 {
-  if (!timer.isReady(60))
+  if (!timer.isReady(this->scaled(60)))
   {
     return;
   }

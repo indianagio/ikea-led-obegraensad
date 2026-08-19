@@ -3,6 +3,7 @@
 
 void FirefliesPlugin::setup()
 {
+  this->useSpeed();
   Screen.clear();
   for (uint8_t i = 0; i < kFireflyCount; i++)
   {
@@ -15,7 +16,7 @@ void FirefliesPlugin::setup()
 
 void FirefliesPlugin::loop()
 {
-  if (!timer.isReady(60))
+  if (!timer.isReady(this->scaled(60)))
   {
     return;
   }

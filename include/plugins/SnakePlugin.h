@@ -30,6 +30,7 @@ private:
   void initGame();
   void newDot();
   void findDirection();
+  void playerStep();
   void moveSnake(uint newpos);
   void end();
   void updateDeathAnimation();
@@ -38,4 +39,6 @@ public:
   void setup() override;
   void loop() override;
   const char *getName() const override;
+  String getStatus() const override;
+  char getAxis() const override;
 };

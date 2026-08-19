@@ -2,6 +2,7 @@
 
 void RainPlugin::setup()
 {
+  this->useSpeed();
   Screen.clear();
   for (byte i = 0; i < RainPlugin::RainPlugin::NUM_DROPS; i++)
     for (unsigned char i = 0; i < RainPlugin::RainPlugin::NUM_DROPS; i++)
@@ -14,7 +15,7 @@ void RainPlugin::setup()
 
 void RainPlugin::loop()
 {
-  if (!timer.isReady(96))
+  if (!timer.isReady(this->scaled(96)))
     return;
 
   // dim the trail
