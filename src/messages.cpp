@@ -88,7 +88,9 @@ void Messages_::scrollMessageEveryMinute()
 {
   struct tm timeinfo;
 
-  if (getLocalTime(&timeinfo))
+  // Short timeout on purpose: the default is 5000ms, and while the clock is
+  // unsynced that stall runs inside loop(), which also polls the button.
+  if (getLocalTime(&timeinfo, 5))
   {
     if (timeinfo.tm_min != previousMinute)
     {

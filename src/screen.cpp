@@ -19,7 +19,8 @@ void Screen_::setBrightness(uint8_t brightness, bool shouldStore)
 
 #ifndef ESP8266
   pinMode(PIN_ENABLE, OUTPUT);
-  digitalWrite(PIN_ENABLE, LOW);
+  // Respect a powered-off panel: changing brightness must not switch it back on.
+  digitalWrite(PIN_ENABLE, poweredOn_ ? LOW : HIGH);
 #endif
 
 #ifdef ENABLE_STORAGE
@@ -98,6 +99,7 @@ void Screen_::loadFromStorage()
 
   setBrightness(storage.getUInt("brightness", MAX_BRIGHTNESS));
   setCurrentRotation(storage.getUInt("rotation", 0));
+  setPower(storage.getBool("power", true));
   storage.end();
 #endif
 }
@@ -120,6 +122,7 @@ void Screen_::setup()
   storage.begin("led-wall", true);
   setBrightness(storage.getUInt("brightness", MAX_BRIGHTNESS));
   Screen.setCurrentRotation(storage.getUInt("rotation", 0));
+  const bool power = storage.getBool("power", true);
 
   storage.end();
 #else
@@ -154,6 +157,10 @@ void Screen_::setup()
   hw_timer_t *Screen_timer = timerBegin(1000000);
   timerAttachInterrupt(Screen_timer, &onScreenTimer);
   timerAlarm(Screen_timer, TIMER_INTERVAL_US, true, 0);
+#endif
+
+#ifdef ENABLE_STORAGE
+  setPower(power); // after the pins exist, so the enable line is actually driven
 #endif
 }
 
@@ -249,8 +256,34 @@ IRAM_ATTR void Screen_::onScreenTimer()
   Screen._render();
 }
 
+bool Screen_::isPoweredOn() const
+{
+  return poweredOn_;
+}
+
+void Screen_::setPower(bool on, bool shouldPersist)
+{
+  poweredOn_ = on;
+
+  // PIN_ENABLE is the shift registers' output enable, active low: driving it
+  // high blanks the panel in hardware, so nothing else has to know.
+  digitalWrite(PIN_ENABLE, on ? LOW : HIGH);
+
+#ifdef ENABLE_STORAGE
+  if (shouldPersist)
+  {
+    storage.begin("led-wall", false);
+    storage.putBool("power", on);
+    storage.end();
+  }
+#endif
+}
+
 IRAM_ATTR void Screen_::_render()
 {
+  if (!poweredOn_)
+    return;
+
   const auto buf = (currentStatus == UPDATE) ? renderBuffer_ : getRotatedRenderBuffer();
 
   // SPI data needs to be 32-bit aligned, round up before divide
