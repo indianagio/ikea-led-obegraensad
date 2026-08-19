@@ -27,6 +27,7 @@
 #include "plugins/CandlePlugin.h"
 #include "plugins/CheckerboardPlugin.h"
 #include "plugins/CirclePlugin.h"
+#include "plugins/ClockXLPlugin.h"
 #include "plugins/CometPlugin.h"
 #include "plugins/DDPPlugin.h"
 #include "plugins/DrawPlugin.h"
@@ -335,6 +336,7 @@ void baseSetup()
   pluginManager.addPlugin(new PongPlugin());
   pluginManager.addPlugin(new FlappyPlugin());
   pluginManager.addPlugin(new InvadersPlugin());
+  pluginManager.addPlugin(new ClockXLPlugin());
 
   Screen.clear();
   pluginManager.init();
