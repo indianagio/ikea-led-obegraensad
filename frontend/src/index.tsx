@@ -5,6 +5,7 @@ import "./index.css";
 import { App } from "./app";
 import { StoreProvider } from "./contexts/store";
 import { Creator } from "./creator";
+import { Play } from "./play";
 import Scheduler from "./scheduler";
 
 const Router = () => {
@@ -26,6 +27,9 @@ const Router = () => {
       <Switch fallback={<App />}>
         <Match when={location() === "/creator"}>
           <Creator />
+        </Match>
+        <Match when={location() === "/play"}>
+          <Play />
         </Match>
         <Match when={location() === "/scheduler"}>
           <Scheduler />

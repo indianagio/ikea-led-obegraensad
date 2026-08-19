@@ -1,6 +1,7 @@
 import { type Component, For, type JSX, Show } from "solid-js";
 
 import { useStore } from "../../contexts/store";
+
 import { ToggleScheduleButton } from "../../scheduler";
 
 interface SidebarSectionProps {
@@ -15,6 +16,33 @@ const SidebarSection: Component<SidebarSectionProps> = (props) => (
   </div>
 );
 
+interface SliderRowProps {
+  label: string;
+  min: number;
+  max: number;
+  value: number;
+  suffix?: string;
+  onChange: (value: number, shouldSend?: boolean) => void;
+}
+
+const SliderRow: Component<SliderRowProps> = (props) => (
+  <div class="space-y-1">
+    <div class="flex justify-between text-sm text-gray-600">
+      <span>{props.label}</span>
+      <span>{props.value}</span>
+    </div>
+    <input
+      type="range"
+      min={props.min}
+      max={props.max}
+      value={props.value}
+      class="w-full"
+      onInput={(e) => props.onChange(parseInt(e.currentTarget.value, 10))}
+      onPointerUp={(e) => props.onChange(parseInt(e.currentTarget.value, 10), true)}
+    />
+  </div>
+);
+
 interface SidebarProps {
   onRotate: (turnRight: boolean) => void;
   onLoadImage: () => void;
@@ -25,11 +53,14 @@ interface SidebarProps {
   onBrightnessChange: (value: number, shouldSend?: boolean) => void;
   onArtnetChange: (value: number, shouldSend?: boolean) => void;
   onPersistPlugin: () => void;
+  onPowerToggle: () => void;
   onGOLDelayChange: (value: number, shouldSend?: boolean) => void;
+  onParamChange: (key: string, value: number, shouldSend?: boolean) => void;
 }
 
 export const Sidebar: Component<SidebarProps> = (props) => {
   const [store] = useStore();
+
 
   return (
     <>
@@ -42,6 +73,21 @@ export const Sidebar: Component<SidebarProps> = (props) => {
             </Show>
           }
         >
+          <SidebarSection title="Display">
+            <button
+              type="button"
+              onClick={props.onPowerToggle}
+              class={`w-full border-0 px-3 py-3 text-sm cursor-pointer font-semibold rounded transition-all hover:opacity-80 active:-translate-y-px ${
+                store?.power ? "bg-gray-700 text-white" : "bg-red-600 text-white"
+              }`}
+            >
+              <i class="fa-solid fa-power-off mr-2" />
+              {store?.power ? "On" : "Off"}
+            </button>
+          </SidebarSection>
+
+          <div class="my-6 border-t border-gray-200" />
+
           <SidebarSection title="Display Mode">
             <div class="flex flex-col gap-2.5">
               <select
@@ -148,6 +194,26 @@ export const Sidebar: Component<SidebarProps> = (props) => {
           </SidebarSection>
         </Show>
 
+        <Show when={(store?.params?.length ?? 0) > 0 && !store?.isActiveScheduler}>
+          <div class="my-6 border-t border-gray-200" />
+
+          <SidebarSection title="Settings">
+            <For each={store?.params}>
+              {(param) => (
+                <SliderRow
+                  label={param.label}
+                  min={param.min}
+                  max={param.max}
+                  value={param.value}
+                  onChange={(value, shouldSend) =>
+                    props.onParamChange(param.key, value, shouldSend)
+                  }
+                />
+              )}
+            </For>
+          </SidebarSection>
+        </Show>
+
         <Show when={store?.plugin === 1 && !store?.isActiveScheduler}>
           <div class="my-6 border-t border-gray-200 hidden lg:block" />
 
@@ -200,6 +266,16 @@ export const Sidebar: Component<SidebarProps> = (props) => {
           >
             <i class="fa-solid fa-pencil mr-2" />
             Animation Creator
+          </a>
+        </Show>
+
+        <Show when={(store?.seats ?? 0) > 0}>
+          <a
+            href="#/play"
+            class="inline-flex items-center text-gray-700 hover:text-gray-900 font-medium"
+          >
+            <i class="fa-solid fa-table-tennis-paddle-ball mr-2" />
+            Play {store?.plugins.find((p) => p.id === store?.plugin)?.name}
           </a>
         </Show>
 

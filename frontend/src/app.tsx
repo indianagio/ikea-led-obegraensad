@@ -1,4 +1,4 @@
-import { type Component, createMemo, Show } from "solid-js";
+import { type Component, createEffect, createMemo, onCleanup, Show } from "solid-js";
 
 import { Layout } from "./components/layout/layout";
 import Sidebar from "./components/layout/sidebar";
@@ -7,6 +7,7 @@ import { ScreenInfo } from "./components/screen-info";
 import { useStore } from "./contexts/store";
 import { useToast } from "./contexts/toast";
 import { loadImageAndGetDataArray, rotateArray } from "./helpers";
+
 
 export const App: Component = () => {
   const [store, actions] = useStore();
@@ -25,7 +26,10 @@ export const App: Component = () => {
       | "persist-plugin"
       | "artnet"
       | "brightness"
-      | "goldelay",
+      | "goldelay"
+      | "param"
+      | "preview"
+      | "power",
     data?: Record<string, string | number> | { data: number[] },
   ) =>
     actions.send(
@@ -95,6 +99,34 @@ export const App: Component = () => {
     }
   };
 
+  // The board only streams frames while somebody is watching, so subscribe for
+  // every mode that renders itself and unsubscribe for Draw.
+  const isPreviewMode = createMemo(() => store.plugin !== 1 && !store.isActiveScheduler);
+
+  createEffect(() => {
+    wsMessage("preview", { enabled: isPreviewMode() ? 1 : 0 });
+  });
+
+  onCleanup(() => wsMessage("preview", { enabled: 0 }));
+
+  const activePluginName = createMemo(
+    () => store.plugins.find((plugin) => plugin.id === store.plugin)?.name ?? "A plugin",
+  );
+
+  const handleParamChange = (key: string, value: number, shouldSend = false) => {
+    actions?.setParamValue(key, value);
+    if (shouldSend) {
+      wsMessage("param", { key, value });
+    }
+  };
+
+  const handlePowerToggle = () => {
+    const next = !store.power;
+    actions?.setPower(next);
+    wsMessage("power", { on: next ? 1 : 0 });
+    toast(next ? "Display on" : "Display off", 1200);
+  };
+
   const handlePersistPlugin = () => {
     wsMessage("persist-plugin");
     toast(`Current mode set as default`, 1500);
@@ -103,21 +135,11 @@ export const App: Component = () => {
   const renderLedMatrix = () => (
     <div class="grid p-8 h-full justify-center items-center sm:p-4 sm:m-0">
       <Show
-        when={store.plugin === 1 && !store.isActiveScheduler}
+        when={!store.isActiveScheduler}
         fallback={
-          <Show
-            when={!store.isActiveScheduler}
-            fallback={
-              <ScreenInfo>
-                <h2 class="text-4xl">Scheduler is running</h2>
-              </ScreenInfo>
-            }
-          >
-            <ScreenInfo>
-              <h2 class="text-4xl">A plugin is currently running</h2>
-              <p class="text-xl mt-2 text-gray-300">Select "Draw" to show the canvas.</p>
-            </ScreenInfo>
-          </Show>
+          <ScreenInfo>
+            <h2 class="text-4xl">Scheduler is running</h2>
+          </ScreenInfo>
         }
       >
         <div class="flex flex-col items-center gap-6">
@@ -134,42 +156,50 @@ export const App: Component = () => {
             }}
           />
 
-          <div class="lg:hidden w-full max-w-100 sm:max-w-125">
-            <div class="grid grid-cols-4 gap-2">
-              <button
-                type="button"
-                onClick={handleLoadImage}
-                class="flex flex-col items-center justify-center gap-1 bg-gray-700 text-white border-0 p-2 cursor-pointer font-semibold hover:opacity-80 active:-translate-y-px transition-all rounded text-xs"
-              >
-                <i class="fa-solid fa-file-import text-base" />
-                <span>Import</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleClear}
-                class="flex flex-col items-center justify-center gap-1 bg-gray-700 text-white border-0 p-2 cursor-pointer font-semibold hover:opacity-80 active:-translate-y-px transition-all rounded hover:bg-red-600 text-xs"
-              >
-                <i class="fa-solid fa-trash text-base" />
-                <span>Clear</span>
-              </button>
-              <button
-                type="button"
-                onClick={handlePersist}
-                class="flex flex-col items-center justify-center gap-1 bg-gray-700 text-white border-0 p-2 cursor-pointer font-semibold hover:opacity-80 active:-translate-y-px transition-all rounded text-xs"
-              >
-                <i class="fa-solid fa-floppy-disk text-base" />
-                <span>Save</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleLoad}
-                class="flex flex-col items-center justify-center gap-1 bg-gray-700 text-white border-0 p-2 cursor-pointer font-semibold hover:opacity-80 active:-translate-y-px transition-all rounded text-xs"
-              >
-                <i class="fa-solid fa-refresh text-base" />
-                <span>Load</span>
-              </button>
+          <Show when={store.plugin !== 1}>
+            <p class="text-sm text-gray-400">
+              Live preview &mdash; {activePluginName()} is running
+            </p>
+          </Show>
+
+          <Show when={store.plugin === 1}>
+            <div class="lg:hidden w-full max-w-100 sm:max-w-125">
+              <div class="grid grid-cols-4 gap-2">
+                <button
+                  type="button"
+                  onClick={handleLoadImage}
+                  class="flex flex-col items-center justify-center gap-1 bg-gray-700 text-white border-0 p-2 cursor-pointer font-semibold hover:opacity-80 active:-translate-y-px transition-all rounded text-xs"
+                >
+                  <i class="fa-solid fa-file-import text-base" />
+                  <span>Import</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleClear}
+                  class="flex flex-col items-center justify-center gap-1 bg-gray-700 text-white border-0 p-2 cursor-pointer font-semibold hover:opacity-80 active:-translate-y-px transition-all rounded hover:bg-red-600 text-xs"
+                >
+                  <i class="fa-solid fa-trash text-base" />
+                  <span>Clear</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePersist}
+                  class="flex flex-col items-center justify-center gap-1 bg-gray-700 text-white border-0 p-2 cursor-pointer font-semibold hover:opacity-80 active:-translate-y-px transition-all rounded text-xs"
+                >
+                  <i class="fa-solid fa-floppy-disk text-base" />
+                  <span>Save</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleLoad}
+                  class="flex flex-col items-center justify-center gap-1 bg-gray-700 text-white border-0 p-2 cursor-pointer font-semibold hover:opacity-80 active:-translate-y-px transition-all rounded text-xs"
+                >
+                  <i class="fa-solid fa-refresh text-base" />
+                  <span>Load</span>
+                </button>
+              </div>
             </div>
-          </div>
+          </Show>
         </div>
       </Show>
     </div>
@@ -189,7 +219,9 @@ export const App: Component = () => {
           onBrightnessChange={handleBrightnessChange}
           onArtnetChange={handleArtnetUniverseChange}
           onGOLDelayChange={handleGOLDelayChange}
+          onParamChange={handleParamChange}
           onPersistPlugin={handlePersistPlugin}
+          onPowerToggle={handlePowerToggle}
         />
       }
     />

@@ -3,7 +3,14 @@ import { createReconnectingWS, createWSState } from "@solid-primitives/websocket
 import { batch, createContext, createEffect, type JSX, useContext } from "solid-js";
 import { createStore } from "solid-js/store";
 
-import { type ScheduleItem, type Store, type StoreActions, SYSTEM_STATUS } from "../types";
+import {
+  type PluginParam,
+  type GameState,
+  type ScheduleItem,
+  type Store,
+  type StoreActions,
+  SYSTEM_STATUS,
+} from "../types";
 import { ToastProvider } from "./toast";
 
 const ws = createReconnectingWS(
@@ -24,8 +31,12 @@ const [mainStore, setStore] = createStore<Store>({
   plugins: [],
   plugin: 1,
   brightness: 0,
+  power: true,
   artnetUniverse: 1,
   GOLDelay: 150,
+  params: [],
+  game: { taken: [false, false], axis: "y", button: false, status: "" },
+  seats: 0,
   indexMatrix: [...new Array(256)].map((_, i) => i),
   leds: [...new Array(256)].fill(0),
   systemStatus: SYSTEM_STATUS.NONE,
@@ -40,8 +51,14 @@ const actions: StoreActions = {
   setPlugins: (plugins) => setStore("plugins", plugins),
   setPlugin: (plugin) => setStore("plugin", plugin),
   setBrightness: (brightness) => setStore("brightness", brightness),
+  setPower: (power: boolean) => setStore("power", power),
   setArtnetUniverse: (artnetUniverse) => setStore("artnetUniverse", artnetUniverse),
   setGOLDelay: (GOLDelay) => setStore("GOLDelay", GOLDelay),
+  setGame: (state: GameState) => setStore("game", state),
+  setSeats: (seats: number) => setStore("seats", seats),
+  setParams: (params: PluginParam[]) => setStore("params", params),
+  setParamValue: (key: string, value: number) =>
+    setStore("params", (param) => param.key === key, "value", value),
   setIndexMatrix: (indexMatrix) => setStore("indexMatrix", indexMatrix),
   setLeds: (leds) => setStore("leds", leds),
   setSystemStatus: (systemStatus: SYSTEM_STATUS) => setStore("systemStatus", systemStatus),
@@ -83,15 +100,38 @@ export const StoreProvider = (props?: { value?: Store; children?: JSX.Element })
     }
   });
 
+  // The board streams the framebuffer as 256 raw bytes rather than JSON, so the
+  // binary path has to be handled before anything tries to parse text.
+  const applyFrame = (buffer: ArrayBuffer) => actions.setLeds(Array.from(new Uint8Array(buffer)));
+
   createEffect(() => {
+    const payload = messageEvent()?.data;
+
+    if (payload instanceof ArrayBuffer) {
+      applyFrame(payload);
+      return;
+    }
+    if (typeof Blob !== "undefined" && payload instanceof Blob) {
+      payload.arrayBuffer().then(applyFrame);
+      return;
+    }
+
     try {
-      const json = JSON.parse(messageEvent()?.data || "{}");
+      const json = JSON.parse(payload || "{}");
 
       if (!json.event || typeof json.event !== "string") {
         return;
       }
 
       switch (json.event) {
+        case "game":
+          actions.setGame({
+            taken: isValidArray(json.taken) ? (json.taken as boolean[]) : [false, false],
+            axis: ["x", "d", "b"].includes(json.axis) ? json.axis : "y",
+            button: !!json.button,
+            status: typeof json.status === "string" ? json.status : "",
+          });
+          break;
         case "info":
           batch(() => {
             if (
@@ -108,6 +148,10 @@ export const StoreProvider = (props?: { value?: Store; children?: JSX.Element })
 
             if (isValidNumber(json.brightness)) {
               actions.setBrightness(json.brightness);
+            }
+
+            if (isValidBoolean(json.power)) {
+              actions.setPower(json.power);
             }
 
             if (isValidBoolean(json.scheduleActive)) {
@@ -128,6 +172,27 @@ export const StoreProvider = (props?: { value?: Store; children?: JSX.Element })
 
             if (mainStore.plugin === 1) {
               actions.setIndexMatrix([...new Array(256)].map((_, i) => i));
+            }
+
+            // Params belong to whichever plugin is now active, so they are
+            // replaced wholesale rather than merged.
+            if (isValidNumber(json.seats)) {
+              actions.setSeats(json.seats);
+            }
+
+            // info also carries the control model, so a controller page that was
+            // already open follows the board switching between games.
+            if (typeof json.axis === "string") {
+              actions.setGame({
+                taken: isValidArray(json.taken) ? (json.taken as boolean[]) : [false, false],
+                axis: ["x", "d", "b"].includes(json.axis) ? json.axis : "y",
+                button: !!json.button,
+                status: typeof json.status === "string" ? json.status : "",
+              });
+            }
+
+            if (isValidArray(json.params)) {
+              actions.setParams(json.params as PluginParam[]);
             }
 
             if (isValidArray(json.data)) {
